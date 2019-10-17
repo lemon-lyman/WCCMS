@@ -15,17 +15,34 @@ ax = fig.add_subplot(111, projection='3d')
 
 class SkeletonNW:
     def __init__(self, bin_image):
-        self.res_arr = np.array([141.7/512, 141.7/512, .8])
-
+        self.res_arr = np.array([96.39/512, 96.39/512, 157.6/197])
+        self.raw_image = bin_image
         self.skeleton_image = skeletonize_3d(bin_image.astype(np.uint8))
+        self.cell_xyz = self.get_cell_xyz()
         self.skel_points_pix = np.asarray(np.where(self.skeleton_image==self.skeleton_image.max())).T
+        self.ax_equal_3d()
         self.skel_points = self.skel_points_pix*self.res_arr
         self.endpoints = []
         self.state = 0
         self.paths = []
         self.interp_paths = []
+        self.delta = 100
         self.trash0 = None
         self.trash1 = None
+        print("Initialized")
+
+    def ax_equal_3d(self):
+        X = np.hstack((self.cell_xyz[:, 0], self.cell_xyz[:, 0].max()))
+        Y = np.hstack((self.cell_xyz[:, 1], self.cell_xyz[:, 1].max()))
+        Z = np.hstack((self.cell_xyz[:, 2], self.cell_xyz[:, 2].max()))
+        # Create cubic bounding box to simulate equal aspect ratio
+        max_range = np.array([X.max() - X.min(), Y.max() - Y.min(), Z.max() - Z.min()]).max()
+        Xb = 0.5 * max_range * np.mgrid[-1:2:2, -1:2:2, -1:2:2][0].flatten() + 0.5 * (X.max() + X.min())
+        Yb = 0.5 * max_range * np.mgrid[-1:2:2, -1:2:2, -1:2:2][1].flatten() + 0.5 * (Y.max() + Y.min())
+        Zb = 0.5 * max_range * np.mgrid[-1:2:2, -1:2:2, -1:2:2][2].flatten() + 0.5 * (Z.max() + Z.min())
+        # Comment or uncomment following both lines to test the fake bounding box:
+        for xb, yb, zb in zip(Xb, Yb, Zb):
+            ax.plot([xb], [yb], [zb], 'w')
 
     def start_gui(self):
         self.initial_scatter = ax.scatter(self.skel_points[:, 0],
@@ -35,6 +52,36 @@ class SkeletonNW:
         ax.set_ylabel('Y (um)')
         ax.set_zlabel('Z (um)')
         self.title = ax.set_title("Select Endpoints")
+
+    def check(self):
+        self.initial_scatter = ax.scatter(self.skel_points[:, 0],
+                                          self.skel_points[:, 1],
+                                          self.skel_points[:, 2], s=10, c='r')
+        self.cell_points = self.get_cell_xyz()
+        ax.scatter(self.cell_points[::50, 0],
+                   self.cell_points[::50, 1],
+                   self.cell_points[::50, 2], s=3, c='b', alpha=.1)
+        ax.set_xlabel('X (um)')
+        ax.set_ylabel('Y (um)')
+        ax.set_zlabel('Z (um)')
+
+    def check_interp(self):
+
+        points = np.loadtxt("skeleton_temp/" + cell + "_points.txt", delimiter=',')
+
+        self.initial_scatter = ax.scatter(points[:, 0],
+                                          points[:, 1],
+                                          points[:, 2], s=5, c='r')
+        self.cell_points = self.get_cell_xyz()
+        ax.scatter(self.cell_points[::5, 0],
+                   self.cell_points[::5, 1],
+                   self.cell_points[::5, 2], s=3, c='b', alpha=.03)
+        ax.set_xlabel('X (um)')
+        ax.set_ylabel('Y (um)')
+        ax.set_zlabel('Z (um)')
+
+    def get_cell_xyz(self):
+        return np.asarray(np.where(self.raw_image == self.raw_image.max())).T * self.res_arr
 
     def onpick(self, event):
         ind = event.ind
@@ -60,7 +107,7 @@ class SkeletonNW:
 
         w = np.ones(len(self.paths[protrusion_idx]))*.1
         w[0] = w[-1] = 100
-        tck, u = interpolate.splprep(self.skel_points[self.paths[protrusion_idx]].T, k=3, w=w)
+        tck, u = interpolate.splprep(self.skel_points[self.paths[protrusion_idx]].T, k=5, w=w)
         new = interpolate.splev(np.linspace(0,1,100), tck, der=0)
         ax.plot(new[0], new[1], new[2], c='r', linewidth=5)
         self.interp_paths.append(new)
@@ -97,7 +144,9 @@ class SkeletonNW:
         self.protrusion_log = []
         [[self.protrusion_log.append(ii) for _ in range(val)] for ii, val in enumerate(self.num_per_protrusion)]
         self.log_arr = np.asarray(self.protrusion_log)
-        np.savetxt("skeleton_temp/" + cell + "_labels.txt", self.log_arr, delimiter=',')
+
+        ## Path to folder 'skeleton_temp' where skeleton data is saved
+	np.savetxt("skeleton_temp/" + cell + "_labels.txt", self.log_arr, delimiter=',')
         np.savetxt("skeleton_temp/" + cell + "_points.txt", self.interp_points, delimiter=',')
         np.savetxt("skeleton_temp/" + cell + "_tangents.txt", self.interp_tangents, delimiter=',')
 
@@ -112,18 +161,27 @@ class SkeletonNW:
             plt.draw()
         elif self.state == len(self.endpoints) + 2:
             self.store_interp()
+            self.cell_points = self.get_cell_xyz()
+            ax.scatter(self.cell_points[::50, 0],
+                       self.cell_points[::50, 1],
+                       self.cell_points[::50, 2], s=3, c='b', alpha=.1)
             print("interp stored")
 
 
 
 cell = sys.argv[1]
-img = np.load("dumped_proccessed/" + cell + "_Post.npy")
+## Use this line
+# img = np.load("dumped_proccessed/" + cell + "_Post.npy")
+## This line only for Alex's request - 9/23
+img = np.load("skel_for_alex/alex_Post.npy")
 skel = SkeletonNW(img)
 
+# skel.check_interp()
+# skel.check()
 skel.start_gui()
-
 fig.canvas.mpl_connect('pick_event', skel.onpick)
 axnest = plt.axes([0.81, 0.05, 0.1, 0.075])
 bnext = Button(axnest, 'Next')
 bnext.on_clicked(skel.next)
+
 plt.show()
