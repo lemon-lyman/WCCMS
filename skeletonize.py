@@ -1,12 +1,10 @@
 import numpy as np
-import meshio
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.widgets import Button
 from skimage.morphology import skeletonize_3d
 from scipy import linalg, interpolate
-import os, sys
-from PIL import Image
+import sys
 
 
 fig = plt.figure()
@@ -15,9 +13,14 @@ ax = fig.add_subplot(111, projection='3d')
 
 class SkeletonNW:
     def __init__(self, bin_image):
+        """
+
+        :param bin_image: numpy array of the 3d binary image. Needs to be sufficiently processed. Smoothness of 3d image
+        directly affects accuracy of skeleton
+        """
         self.res_arr = np.array([96.39/512, 96.39/512, 157.6/197])
         self.raw_image = bin_image
-        self.skeleton_image = skeletonize_3d(bin_image.astype(np.uint8))
+        self.skeleton_image = skeletonize_3d(bin_image.astype(np.uint8)) ## Does the bulk of the 'skeletonizing'
         self.cell_xyz = self.get_cell_xyz()
         self.skel_points_pix = np.asarray(np.where(self.skeleton_image==self.skeleton_image.max())).T
         self.ax_equal_3d()
@@ -32,6 +35,10 @@ class SkeletonNW:
         print("Initialized")
 
     def ax_equal_3d(self):
+        """
+        source - https://stackoverflow.com/a/13701747
+        :return:
+        """
         X = np.hstack((self.cell_xyz[:, 0], self.cell_xyz[:, 0].max()))
         Y = np.hstack((self.cell_xyz[:, 1], self.cell_xyz[:, 1].max()))
         Z = np.hstack((self.cell_xyz[:, 2], self.cell_xyz[:, 2].max()))
@@ -54,6 +61,10 @@ class SkeletonNW:
         self.title = ax.set_title("Select Endpoints")
 
     def check(self):
+        """
+        Checks the initial skeletonize_3d attempt. Call this or run the normal skeleton gui but not both
+        :return:
+        """
         self.initial_scatter = ax.scatter(self.skel_points[:, 0],
                                           self.skel_points[:, 1],
                                           self.skel_points[:, 2], s=10, c='r')
@@ -66,6 +77,11 @@ class SkeletonNW:
         ax.set_zlabel('Z (um)')
 
     def check_interp(self):
+        """
+        Checks the saved interpolated skeleton. Must be existing interpolated skeleton. Call this or run the normal
+        skeleton gui but not both
+        :return:
+        """
 
         points = np.loadtxt("skeleton_temp/" + cell + "_points.txt", delimiter=',')
 
@@ -146,7 +162,8 @@ class SkeletonNW:
         self.log_arr = np.asarray(self.protrusion_log)
 
         ## Path to folder 'skeleton_temp' where skeleton data is saved
-	np.savetxt("skeleton_temp/" + cell + "_labels.txt", self.log_arr, delimiter=',')
+        ## Using 'cell' here as a global variable is probably bad practice
+	    np.savetxt("skeleton_temp/" + cell + "_labels.txt", self.log_arr, delimiter=',')
         np.savetxt("skeleton_temp/" + cell + "_points.txt", self.interp_points, delimiter=',')
         np.savetxt("skeleton_temp/" + cell + "_tangents.txt", self.interp_tangents, delimiter=',')
 
@@ -170,18 +187,22 @@ class SkeletonNW:
 
 
 cell = sys.argv[1]
-## Use this line
-# img = np.load("dumped_proccessed/" + cell + "_Post.npy")
-## This line only for Alex's request - 9/23
-img = np.load("skel_for_alex/alex_Post.npy")
+img = np.load("dumped_proccessed/" + cell + "_Post.npy") ## Path to NPY processed 3D binary image of cell
+
+######################
 skel = SkeletonNW(img)
+######################
 
 # skel.check_interp()
+
 # skel.check()
+
+######################
 skel.start_gui()
 fig.canvas.mpl_connect('pick_event', skel.onpick)
 axnest = plt.axes([0.81, 0.05, 0.1, 0.075])
 bnext = Button(axnest, 'Next')
 bnext.on_clicked(skel.next)
+######################
 
 plt.show()
